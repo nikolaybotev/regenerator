@@ -82,7 +82,6 @@ var runtime = (function (exports) {
   // minifier not to mangle the names of these two functions.
   function Generator() {}
   function GeneratorFunction() {}
-  function GeneratorFunctionPrototype() {}
 
   // This is a polyfill for %IteratorPrototype% for environments that
   // don't natively support it.
@@ -109,17 +108,16 @@ var runtime = (function (exports) {
     IteratorPrototype = NativeIteratorPrototype;
   }
 
-  var Gp = GeneratorFunctionPrototype.prototype =
-    Generator.prototype = Object.create(IteratorPrototype);
-  GeneratorFunction.prototype = GeneratorFunctionPrototype;
-  defineProperty(Gp, "constructor", { value: GeneratorFunctionPrototype, configurable: true });
+  var Gp = Generator.prototype = Object.create(IteratorPrototype);
+  GeneratorFunction.prototype = Generator;
+  defineProperty(Gp, "constructor", { value: Generator, configurable: true });
   defineProperty(
-    GeneratorFunctionPrototype,
+    Generator,
     "constructor",
     { value: GeneratorFunction, configurable: true }
   );
   GeneratorFunction.displayName = define(
-    GeneratorFunctionPrototype,
+    Generator,
     toStringTagSymbol,
     "GeneratorFunction"
   );
@@ -146,9 +144,9 @@ var runtime = (function (exports) {
 
   exports.mark = function(genFun) {
     if (Object.setPrototypeOf) {
-      Object.setPrototypeOf(genFun, GeneratorFunctionPrototype);
+      Object.setPrototypeOf(genFun, Generator);
     } else {
-      genFun.__proto__ = GeneratorFunctionPrototype;
+      genFun.__proto__ = Generator;
       define(genFun, toStringTagSymbol, "GeneratorFunction");
     }
     genFun.prototype = Object.create(Gp);

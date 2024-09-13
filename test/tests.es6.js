@@ -2642,6 +2642,7 @@ describe("generator function prototype", function() {
     assert.notStrictEqual(IteratorPrototype, Object);
     assert.throws(() => Iterator.call({}));
     assert.throws(() => new Iterator());
+    assert.strictEqual(f() instanceof f, true);
 
     if (typeof process === "undefined" ||
         process.version.slice(1, 3) === "0.") {
