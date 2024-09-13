@@ -86,12 +86,20 @@ var runtime = (function (exports) {
 
   // This is a polyfill for %IteratorPrototype% for environments that
   // don't natively support it.
-  var IteratorPrototype = {};
+  var getProto = Object.getPrototypeOf;
+  function Iterator() {
+    if (!IteratorPrototype.isPrototypeOf(this)) {
+      throw new TypeError("Iterator constructor called on non-iterator object");
+    }
+    if (getProto && getProto(this) === IteratorPrototype) {
+      throw new TypeError("Cannot instantiate abstract Iterator class");
+    }
+  }
+  var IteratorPrototype = Iterator.prototype;
   define(IteratorPrototype, iteratorSymbol, function () {
     return this;
   });
 
-  var getProto = Object.getPrototypeOf;
   var NativeIteratorPrototype = getProto && getProto(getProto(values([])));
   if (NativeIteratorPrototype &&
       NativeIteratorPrototype !== Op &&
