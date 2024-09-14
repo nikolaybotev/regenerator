@@ -116,6 +116,35 @@ var runtime = (function (exports) {
     "GeneratorFunction"
   );
 
+  // Async Generator Prototype Chain
+  function AsyncGeneratorFunction() {}
+  function AsyncGenerator() {}
+  function AsyncIterator() {
+    if (!AsyncIteratorPrototype.isPrototypeOf(this)) {
+      throw new TypeError("AsyncIterator constructor called on non-iterator object");
+    }
+    if (getProto && getProto(this) === AsyncIteratorPrototype) {
+      throw new TypeError("Cannot instantiate abstract AsyncIterator class");
+    }
+  }
+  var AsyncIteratorPrototype = AsyncIterator.prototype;
+  define(AsyncIteratorPrototype, asyncIteratorSymbol, function () {
+    return this;
+  });
+  var AsyncGp = AsyncGenerator.prototype = Object.create(AsyncIteratorPrototype);
+  AsyncGeneratorFunction.prototype = AsyncGenerator;
+  defineProperty(AsyncGp, "constructor", { value: AsyncGenerator, configurable: true });
+  defineProperty(
+    AsyncGenerator,
+    "constructor",
+    { value: AsyncGeneratorFunction, configurable: true }
+  );
+  AsyncGeneratorFunction.displayName = define(
+    AsyncGenerator,
+    toStringTagSymbol,
+    "AsyncGeneratorFunction"
+  );
+
   // Helper for defining the .next, .throw, and .return methods of the
   // Iterator interface in terms of a single ._invoke method.
   function defineIteratorMethods(prototype) {
@@ -136,6 +165,16 @@ var runtime = (function (exports) {
       : false;
   };
 
+  exports.isAsyncGeneratorFunction = function(genFun) {
+    var ctor = typeof genFun === "function" && genFun.constructor;
+    return ctor
+      ? ctor === AsyncGeneratorFunction ||
+        // For the native AsyncGeneratorFunction constructor, the best we can
+        // do is to check its .name property.
+        (ctor.displayName || ctor.name) === "AsyncGeneratorFunction"
+      : false;
+  };
+
   exports.mark = function(genFun) {
     if (Object.setPrototypeOf) {
       Object.setPrototypeOf(genFun, GeneratorFunctionPrototype);
@@ -147,6 +186,17 @@ var runtime = (function (exports) {
     return genFun;
   };
 
+  exports.markAsync = function(genFun) {
+    if (Object.setPrototypeOf) {
+      Object.setPrototypeOf(genFun, AsyncGenerator);
+    } else {
+      genFun.__proto__ = AsyncGenerator;
+      define(genFun, toStringTagSymbol, "AsyncGeneratorFunction");
+    }
+    genFun.prototype = Object.create(AsyncGp);
+    return genFun;
+  };
+
   // Within the body of any async function, `await x` is transformed to
   // `yield regeneratorRuntime.awrap(x)`, so that the runtime can test
   // `hasOwn.call(value, "__await")` to determine if the yielded value is
@@ -155,7 +205,7 @@ var runtime = (function (exports) {
     return { __await: arg };
   };
 
-  function AsyncIterator(generator, PromiseImpl) {
+  function makeAsyncIterator(generator, PromiseImpl) {
     function invoke(method, arg, resolve, reject) {
       var record = tryCatch(generator[method], generator, arg);
       if (record.type === "throw") {
@@ -217,16 +267,10 @@ var runtime = (function (exports) {
         ) : callInvokeWithMethodAndArg();
     }
 
-    // Define the unified helper method that is used to implement .next,
-    // .throw, and .return (see defineIteratorMethods).
-    defineProperty(this, "_invoke", { value: enqueue });
+    return enqueue;
   }
 
-  defineIteratorMethods(AsyncIterator.prototype);
-  define(AsyncIterator.prototype, asyncIteratorSymbol, function () {
-    return this;
-  });
-  exports.AsyncIterator = AsyncIterator;
+  defineIteratorMethods(AsyncGp);
 
   // Note that simple async functions are implemented on top of
   // AsyncIterator objects; they just return a Promise for the value of
@@ -234,16 +278,31 @@ var runtime = (function (exports) {
   exports.async = function(innerFn, outerFn, self, tryLocsList, PromiseImpl) {
     if (PromiseImpl === void 0) PromiseImpl = Promise;
 
-    var iter = new AsyncIterator(
+    var iter = new makeAsyncIterator(
       wrap(innerFn, outerFn, self, tryLocsList),
       PromiseImpl
     );
 
-    return exports.isGeneratorFunction(outerFn)
-      ? iter // If outerFn is a generator, return the full iterator.
-      : iter.next().then(function(result) {
-          return result.done ? result.value : iter.next();
-        });
+    if (exports.isAsyncGeneratorFunction(outerFn)) {
+      // If outerFn is a generator, return the full iterator,
+      // wrapped in an instance of the async generator function.
+
+      // If outerFn provided and outerFn.prototype is an Async Generator, then outerFn.prototype instanceof AsyncGenerator.
+      if (!(outerFn && outerFn.prototype instanceof AsyncGenerator)) {
+        throw new TypeError("Invalid outerFn");
+      }
+      var asyncGenerator = Object.create(outerFn.prototype);
+
+      // The ._invoke method unifies the implementations of the .next,
+      // .throw, and .return methods.
+      defineProperty(asyncGenerator, "_invoke", { value: iter });
+
+      return asyncGenerator;
+    } else {
+      return iter("next").then(function(result) {
+        return result.done ? result.value : iter("next");
+      });
+    }
   };
 
   function makeInvokeMethod(innerFn, self, context) {

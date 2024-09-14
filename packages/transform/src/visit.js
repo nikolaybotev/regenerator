@@ -182,12 +182,15 @@ exports.getVisitor = ({ types: t }) => ({
         node.generator = false;
       }
 
-      if (node.async) {
+      let wasAsync = node.async
+      if (wasAsync) {
         node.async = false;
       }
 
       if (wasGeneratorFunction && t.isExpression(node)) {
-        util.replaceWithOrRemove(path, t.callExpression(util.runtimeProperty("mark"), [node]))
+        util.replaceWithOrRemove(path, t.callExpression(
+          util.runtimeProperty(wasAsync ? "markAsync" : "mark"),
+          [node]))
         path.addComment("leading", "#__PURE__");
       }
 
@@ -291,7 +294,7 @@ function getMarkedFunctionId(funPath) {
   // Get a new unique identifier for our marked variable.
   const markedId = blockPath.scope.generateUidIdentifier("marked");
   const markCallExp = t.callExpression(
-    util.runtimeProperty("mark"),
+    util.runtimeProperty(node.async ? "markAsync" : "mark"),
     [t.clone(node.id)]
   );
 
